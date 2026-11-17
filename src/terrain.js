@@ -9,20 +9,30 @@ const softplus = (s, w) => w * Math.log(1 + Math.exp(s / w));
 
 // 石头：{x,y 位置, R 半径, H 高度(相对当地床面), p 边缘陡度}
 export const ROCKS = [
-  { x: 19.9, y: 14.6, R: 0.80, H: 1.05, p: 3.2 },
-  { x: 20.7, y: 13.7, R: 0.55, H: 0.80, p: 3.0 },
-  { x: 19.3, y: 13.5, R: 0.46, H: 0.62, p: 3.0 },
-  { x: 21.0, y: 15.3, R: 0.50, H: 0.70, p: 3.0 },
-  { x: 18.1, y: 15.0, R: 0.62, H: 0.50, p: 3.0 },   // 半没入水中的石头
-  { x: 15.4, y: 12.4, R: 0.40, H: 0.34, p: 2.8 },   // 水下石头，水浅时露头
-  { x: 13.6, y: 6.2, R: 0.30, H: 0.24, p: 2.6 },
-  { x: 17.0, y: 4.2, R: 0.34, H: 0.20, p: 2.6 },
+  { x: 19.9, y: 14.7, R: 0.95, H: 0.95, p: 2.3 },
+  { x: 20.9, y: 13.6, R: 0.58, H: 0.62, p: 2.4 },
+  { x: 19.0, y: 13.6, R: 0.50, H: 0.50, p: 2.4 },
+  { x: 21.1, y: 15.5, R: 0.55, H: 0.66, p: 2.3 },
+  { x: 18.3, y: 15.1, R: 0.66, H: 0.52, p: 2.4 },   // 半没入水中
+  { x: 20.2, y: 12.7, R: 0.34, H: 0.30, p: 2.3 },
+  { x: 17.6, y: 13.7, R: 0.30, H: 0.22, p: 2.3 },
+  { x: 15.4, y: 12.4, R: 0.42, H: 0.34, p: 2.2 },   // 水下石头，水浅时露头
+  { x: 13.6, y: 6.2, R: 0.32, H: 0.24, p: 2.2 },
+  { x: 17.0, y: 4.2, R: 0.36, H: 0.20, p: 2.2 },
+  { x: 14.8, y: 8.0, R: 0.20, H: 0.12, p: 2.0 },
+  { x: 11.8, y: 11.2, R: 0.24, H: 0.14, p: 2.0 },
 ];
+// 石头的不规则外形：半径随方位角扰动
+function rockD(r, x, y) {
+  const dx = x - r.x, dy = y - r.y, a = Math.atan2(dy, dx);
+  const w = 1 + 0.26 * Math.sin(3 * a + r.x * 1.7) + 0.16 * Math.sin(5 * a + r.y * 2.3) + 0.08 * Math.sin(9 * a + r.x * r.y);
+  return Math.hypot(dx, dy) / (r.R * w);
+}
 
 function baseBed(x, y) {
   const Ly = LENGTH;
   // 海岸线弯曲（岬角/海湾），让浪舌形态不单调
-  const xs = x - 1.6 * Math.sin(2 * Math.PI * y / Ly * 1.15 + 0.6) - 0.55 * Math.sin(2 * Math.PI * y / Ly * 2.9 + 1.9);
+  const xs = x - 2.1 * Math.sin(2 * Math.PI * y / Ly * 1.15 + 0.6) - 0.95 * Math.sin(2 * Math.PI * y / Ly * 2.9 + 1.9) - 0.30 * Math.sin(2 * Math.PI * y / Ly * 7.3 + 0.3);   // 海岸线：岬角、海湾、沙滩尖角
   let b = -0.9 + 0.072 * softplus(xs - 8.8, 0.9);                    // 平底 → 缓坡（约 1:14）
   b += 0.16 * Math.exp(-((xs - 12.3) ** 2) / 1.5);                   // 沙洲
   b += 2.5 * (1 - Math.exp(-Math.pow(Math.max(0, xs - 21.5) / 8.5, 2)));        // 沙丘缓缓升高到 ~2.5m 后趋平
@@ -32,8 +42,10 @@ function baseBed(x, y) {
 }
 
 // 近海加深（x<0，仅渲染用）、南北岬角（把水域围成海湾，隐藏模拟域的侧边界）
-function sideRise(x, y) {
+function sideRise(x, y0) {
   const taper = sstep(-60, -20, x);
+  const y = y0 + 0.7 * Math.sin(x * 0.27 + 1.1) + 0.35 * Math.sin(x * 0.71);          // 南北岸线也要弯曲
+  const Y0 = y0; 
   const north = 1.05 * sstep(LENGTH - 2.4, LENGTH - 0.2, y) + 3.8 * sstep(LENGTH, LENGTH + 28, y);
   const south = 1.05 * sstep(2.4, 0.2, y) + 3.8 * sstep(0, -28, y);
   return taper * (north + south);
@@ -43,10 +55,11 @@ export function bedHeight(x, y) {
   if (x < 0) b = -0.9 - 2.1 * sstep(0, 25, -x);
   b += sideRise(x, y);
   for (const r of ROCKS) {
-    const d = Math.hypot(x - r.x, y - r.y) / r.R;
-    if (d < 1.6) {
+    const d = rockD(r, x, y);
+    if (d < 1.8) {
       const base = Math.max(baseBed(r.x, r.y), -0.55);
-      b = Math.max(b, base - 0.25 + (r.H + 0.25) * Math.exp(-Math.pow(d, r.p) * 1.4));
+      const top = 0.035 * Math.sin(x * 11.3 + y * 3.1) * Math.sin(y * 9.7 - x * 2.3);       // 顶面起伏
+      b = Math.max(b, base - 0.25 + (r.H + 0.25) * Math.exp(-Math.pow(d, r.p) * 1.5) + top * Math.exp(-d * d));
     }
   }
   return b;
@@ -56,8 +69,8 @@ export function bedHeight(x, y) {
 export function rockMask(x, y) {
   let m = 0;
   for (const r of ROCKS) {
-    const d = Math.hypot(x - r.x, y - r.y) / r.R;
-    if (d < 1.6) {
+    const d = rockD(r, x, y);
+    if (d < 1.8) {
       const lift = bedHeight(x, y) - baseBed(x, y);
       m = Math.max(m, sstep(0.03, 0.18, lift));
     }

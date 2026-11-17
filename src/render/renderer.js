@@ -4,7 +4,7 @@ import * as S from './shaders.js';
 import { bedHeight, rockMask, DOMAIN, WIDTH, LENGTH } from '../terrain.js';
 import { buildHullMesh, HULL } from '../boat.js';
 
-const SUN = (() => { const el = 40 * Math.PI / 180, az = 28 * Math.PI / 180; return [Math.cos(el) * Math.cos(az), Math.cos(el) * Math.sin(az), Math.sin(el)]; })();
+const SUN = (() => { const el = 27 * Math.PI / 180, az = 22 * Math.PI / 180; return [Math.cos(el) * Math.cos(az), Math.cos(el) * Math.sin(az), Math.sin(el)]; })();
 
 export class Camera {
   constructor() { this.target = [19.5, 9.6, 0.1]; this.yaw = (198 * Math.PI) / 180; this.pitch = (12 * Math.PI) / 180; this.dist = 21; this.fov = (46 * Math.PI) / 180; }
@@ -20,7 +20,7 @@ export class Renderer {
     if (!gl.getExtension('EXT_color_buffer_float')) throw new Error('需要 EXT_color_buffer_float');
     gl.getExtension('OES_texture_float_linear');
     this.ssaa = opts.ssaa ?? 1.5;
-    this.exposure = opts.exposure ?? 0.9;
+    this.exposure = opts.exposure ?? 0.82;
     this.cam = new Camera();
     this.progs = {};
     this._uloc = new Map();
@@ -45,7 +45,7 @@ export class Renderer {
   _initPrograms() {
     this._prog('sky', S.FS_VERT, S.SKY_FRAG); this._prog('copy', S.FS_VERT, S.COPY_FRAG); this._prog('present', S.FS_VERT, S.PRESENT_FRAG);
     this._prog('terrain', S.TERRAIN_VERT, S.TERRAIN_FRAG); this._prog('caustic', S.CAUSTIC_VERT, S.CAUSTIC_FRAG);
-    this._prog('water', S.WATER_VERT, S.WATER_FRAG); this._prog('boat', S.BOAT_VERT, S.BOAT_FRAG); this._prog('rope', S.BOAT_VERT, S.ROPE_FRAG); this._prog('spray', S.SPRAY_VERT, S.SPRAY_FRAG);
+    this._prog('water', S.WATER_VERT, S.WATER_FRAG); this._prog('boat', S.BOAT_VERT, S.BOAT_FRAG); this._prog('rope', S.BOAT_VERT, S.ROPE_FRAG); this._prog('spray', S.SPRAY_VERT, S.SPRAY_FRAG); this._prog('shadow', S.SHADOW_VERT, S.SHADOW_FRAG);
   }
   _u(prog, name) {
     const key = prog + '|' + name; let l = this._uloc.get(key);
@@ -161,9 +161,25 @@ export class Renderer {
     this._buf(new Uint32Array(ri), gl.ELEMENT_ARRAY_BUFFER); this.ropeCount = ri.length; gl.bindVertexArray(null);
     // 水花
     this.sprayVAO = gl.createVertexArray(); gl.bindVertexArray(this.sprayVAO);
-    this.sprayBuf = this._buf(new Float32Array(14000 * 5), gl.ARRAY_BUFFER, gl.DYNAMIC_DRAW);
+    this.sprayBuf = this._buf(new Float32Array(24000 * 5), gl.ARRAY_BUFFER, gl.DYNAMIC_DRAW);
     gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 20, 0); gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 1, gl.FLOAT, false, 20, 12); gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 20, 16);
     gl.bindVertexArray(null);
+    // 阴影贴图（太阳方向正交投影，覆盖模拟域及周边）
+    this.shW = 2048;
+    this.shDepth = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, this.shDepth);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, this.shW, this.shW);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    this.shFB = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, this.shFB);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, this.shDepth, 0); gl.drawBuffers([gl.NONE]); gl.readBuffer(gl.NONE);
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) throw new Error('阴影 FBO 不完整');
+    {
+      const c = [WIDTH / 2 + 2, LENGTH / 2, 0.3], R = 24;
+      const eye = [c[0] + SUN[0] * 80, c[1] + SUN[1] * 80, c[2] + SUN[2] * 80];
+      const view = mat4.lookAt(eye, c, [0, 0, 1]);
+      const o = new Float32Array(16); o[0] = 1 / R; o[5] = 1 / R; o[10] = -2 / (200 - 20); o[14] = -(200 + 20) / (200 - 20); o[15] = 1;   // 正交 ±R，近 20 远 200
+      this.lightVP = mat4.mul(o, view);
+    }
     // 床面高程纹理（焦散用，R 通道）
     const bw = 384, bh = 256, bd = new Float32Array(bw * bh * 4);
     for (let j = 0; j < bh; j++) for (let i = 0; i < bw; i++) bd[4 * (j * bw + i)] = bedHeight((i + 0.5) / bw * WIDTH, (j + 0.5) / bh * LENGTH);
@@ -206,6 +222,7 @@ export class Renderer {
     this.uploadSim(snap);
     this.cloudT = snap.time;
     const cam = this.cam; cam.clamp();
+    if (this.followBoat) { const bp = snap.boat.pos; cam.target[0] += (bp[0] - cam.target[0]) * 0.08; cam.target[1] += (bp[1] - cam.target[1]) * 0.08; cam.target[2] = 0.05; }
     const eye = cam.eye(), aspect = this.cw / this.ch;
     const proj = mat4.perspective(cam.fov, aspect, 0.08, 900), view = mat4.lookAt(eye, cam.target, [0, 0, 1]);
     const vp = mat4.mul(proj, view);
@@ -215,6 +232,14 @@ export class Renderer {
     const boatM = mat4.fromQuatPos(snap.boat.q, snap.boat.pos);
     this._updateRope(snap);
     gl.disable(gl.BLEND); gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(true); gl.disable(gl.CULL_FACE);
+
+    // 0) 阴影 pass（太阳视角深度：地形 + 船）
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.shFB); gl.viewport(0, 0, this.shW, this.shW); gl.clear(gl.DEPTH_BUFFER_BIT);
+    gl.colorMask(false, false, false, false); gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(2, 4);
+    this.use('shadow'); this.um4('uLightVP', this.lightVP); this.um4('uModel', mat4.ident());
+    gl.bindVertexArray(this.terrNear.vao); gl.drawElements(gl.TRIANGLES, this.terrNear.count, gl.UNSIGNED_INT, 0);
+    this.um4('uModel', boatM); gl.bindVertexArray(this.boatVAO.vao); gl.drawElements(gl.TRIANGLES, this.boatVAO.count, gl.UNSIGNED_INT, 0);
+    gl.disable(gl.POLYGON_OFFSET_FILL); gl.colorMask(true, true, true, true);
 
     // 1) 焦散图
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.caFB); gl.viewport(0, 0, this.caW, this.caH);
@@ -271,7 +296,7 @@ export class Renderer {
     const sceneU = () => {
       this._commonUniforms(snap, snap.time); this.um4('uVP', vp); this.u3f('uCam', eye[0], eye[1], eye[2]); this.u3f('uSigma', ...this.sigma);
       this.u2f('uDom', WIDTH, LENGTH); this.u1f('uClipWater', refl ? 1 : 0);
-      this.tex(5, this.caTex, 'uCaust');
+      this.tex(5, this.caTex, 'uCaust'); this.tex(7, this.shDepth, 'uShadow'); this.um4('uLightVP', this.lightVP); this.u1f('uShadowOn', 1);
     };
     // 地形
     this.use('terrain'); sceneU(); this.tex(0, this.simTex, 'uSim');

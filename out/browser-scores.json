@@ -1,0 +1,31 @@
+{
+ "C2": {
+  "score": 3,
+  "max": 3,
+  "checks": {
+   "windSlider": true,
+   "presets": true,
+   "dirSlider": true,
+   "gustToggle": true,
+   "ropeToggle": true,
+   "followToggle": true,
+   "quality": true,
+   "speed": true,
+   "pause": true,
+   "camera": true,
+   "dropClick": true,
+   "uiComplete": true,
+   "nonBlank": true,
+   "noJsErrors": true
+  }
+ },
+ "C3": {
+  "score": 3,
+  "max": 3,
+  "errors": [],
+  "blank": {
+   "mean": 175.6851851851852,
+   "std": 26.329757295801862
+  }
+ }
+}

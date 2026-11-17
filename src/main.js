@@ -41,6 +41,7 @@ function initUI() {
   $('gust').onclick = (e) => { state.gust = !state.gust; e.target.textContent = state.gust ? '开' : '关'; e.target.classList.toggle('on', state.gust); worker ? worker.postMessage({ type: 'gust', on: state.gust }) : (sim.windMode = state.gust ? 'gusty' : 'steady'); };
   let ropeOn = true;
   $('rope').onclick = (e) => { ropeOn = !ropeOn; e.target.textContent = ropeOn ? '开' : '关'; e.target.classList.toggle('on', ropeOn); worker ? worker.postMessage({ type: 'rope', on: ropeOn }) : (sim.boat.rope && (sim.boat.rope.on = ropeOn)); };
+  $('follow').onclick = (e) => { renderer.followBoat = !renderer.followBoat; e.target.textContent = renderer.followBoat ? '开' : '关'; e.target.classList.toggle('on', renderer.followBoat); };
   $('ssaa').onchange = (e) => renderer.setSSAA(Number(e.target.value));
   $('grid').onchange = (e) => restartSim(Number(e.target.value));
   $('speed').oninput = (e) => { speed = Number(e.target.value); worker && worker.postMessage({ type: 'speed', v: speed }); updateLabels(); };

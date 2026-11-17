@@ -1,0 +1,19 @@
+C2 界面功能 {
+ "windSlider": true,
+ "presets": true,
+ "dirSlider": true,
+ "gustToggle": true,
+ "ropeToggle": true,
+ "followToggle": true,
+ "quality": true,
+ "speed": true,
+ "pause": true,
+ "camera": true,
+ "dropClick": true,
+ "uiComplete": true,
+ "nonBlank": true,
+ "noJsErrors": true
+}
+C2 得分 3.00 / 3
+C3 浏览器运行：JS 错误 0 个，画面均值 176 标准差 26
+C3 得分 3.00 / 3

@@ -69,6 +69,7 @@ export class SWE {
     this.clippedVolume = 0;  // 因正性修正累计移除/增加的体积
     this._o = new Float64Array(3);
     this._o2 = new Float64Array(3);
+    this.useActive = o.useActive ?? true; this.nxA = this.nx;
     // 床面（含幽灵层，取最近内部值）
     for (let j = 0; j < this.ny; j++) for (let i = 0; i < this.nx; i++) this.b[this.id(i, j)] = o.bed[j * this.nx + i];
     this.fillGhostBed();
@@ -119,15 +120,27 @@ export class SWE {
     }
   }
 
+  // 活动区：统计最东侧的湿单元列，其右 4 格之外全干（通量为零），不参与计算（沙滩/沙丘约占三成网格）。
+  updateActive() {
+    const { nx, ny, h, hdry } = this;
+    if (!this.useActive) { this.nxA = nx; return; }
+    let imax = -1;
+    for (let j = 0; j < ny; j++) {
+      let k = this.id(nx - 1, j);
+      for (let i = nx - 1; i > imax; i--, k--) if (h[k] > hdry) { imax = i; break; }
+    }
+    this.nxA = Math.min(nx, Math.max(4, imax + 5));
+  }
+
   // 计算 RHS：dh,dq,dr（仅内部单元）。输入 h,q,r 必须已施加边界条件。
   rhs(h, q, r, dh, dq, dr) {
-    const { nx, ny, W, g, b, u, v, eta, epsH, hdry, hslope, theta, dx, dy } = this;
+    const { nx, ny, W, g, b, u, v, eta, epsH, hdry, hslope, theta, dx, dy, nxA } = this;
     const { sex, sey, sux, suy, svx, svy } = this;
     const e2 = epsH * epsH;
     // 1) 原始变量（含一圈外的幽灵层）
     for (let j = -PAD; j < ny + PAD; j++) {
       let k = this.id(-PAD, j);
-      for (let i = -PAD; i < nx + PAD; i++, k++) {
+      for (let i = -PAD; i < Math.min(nx + PAD, nxA + PAD); i++, k++) {
         const hh = h[k];
         eta[k] = hh + b[k];
         if (hh > hdry) { const f = 2 * hh / (hh * hh + Math.max(hh * hh, e2)); u[k] = q[k] * f; v[k] = r[k] * f; }
@@ -137,7 +150,7 @@ export class SWE {
     // 2) 限制斜率（-1..n 范围，需要 ±1 邻居）
     for (let j = -1; j <= ny; j++) {
       let k = this.id(-1, j);
-      for (let i = -1; i <= nx; i++, k++) {
+      for (let i = -1; i <= nxA; i++, k++) {
         const hc = h[k];
         if (hc < hslope) { sex[k] = sey[k] = sux[k] = suy[k] = svx[k] = svy[k] = 0; continue; }
         // x
@@ -166,7 +179,7 @@ export class SWE {
     const o = this._o;
     for (let j = 0; j < ny; j++) {
       let k = this.id(-1, j);
-      for (let i = -1; i < nx; i++, k++) {
+      for (let i = -1; i < nxA; i++, k++) {
         const kr = k + 1;
         const bL = b[k], bR = b[kr];
         let etaL = eta[k] + 0.5 * sex[k], etaR = eta[kr] - 0.5 * sex[kr];
@@ -187,7 +200,7 @@ export class SWE {
     // 4) y 方向界面通量：界面 (i, j+1/2)，下单元 k，上单元 k+W；法向速度为 v，切向为 u
     for (let j = -1; j < ny; j++) {
       let k = this.id(0, j);
-      for (let i = 0; i < nx; i++, k++) {
+      for (let i = 0; i < nxA; i++, k++) {
         const kr = k + W;
         const bL = b[k], bR = b[kr];
         let etaL = eta[k] + 0.5 * sey[k], etaR = eta[kr] - 0.5 * sey[kr];
@@ -210,7 +223,7 @@ export class SWE {
     const idx = 1 / dx, idy = 1 / dy;
     for (let j = 0; j < ny; j++) {
       let k = this.id(0, j);
-      for (let i = 0; i < nx; i++, k++) {
+      for (let i = 0; i < nxA; i++, k++) {
         dh[k] = -(fxh[k] - fxh[k - 1]) * idx - (fyh[k] - fyh[k - W]) * idy;
         let sq = -(fxqL[k] - fxqR[k - 1]) * idx - (fyq[k] - fyq[k - W]) * idy;
         let sr = -(fxr[k] - fxr[k - 1]) * idx - (fyrL[k] - fyrR[k - W]) * idy;
@@ -225,11 +238,11 @@ export class SWE {
   }
 
   maxSpeed() {
-    const { nx, ny, h, q, r, g, hdry, epsH } = this;
+    const { ny, h, q, r, g, hdry, epsH, nxA } = this;
     let m = 1e-6;
     for (let j = 0; j < ny; j++) {
       let k = this.id(0, j);
-      for (let i = 0; i < nx; i++, k++) {
+      for (let i = 0; i < nxA; i++, k++) {
         const hh = h[k];
         if (hh > hdry) {
           const f = 2 * hh / (hh * hh + Math.max(hh * hh, epsH * epsH));
@@ -245,10 +258,10 @@ export class SWE {
 
   // 正性修正：负水深置零，薄水层动量置零
   fixPositivity(h, q, r) {
-    const { nx, ny, hdry } = this;
+    const { ny, hdry, nxA } = this;
     for (let j = 0; j < ny; j++) {
       let k = this.id(0, j);
-      for (let i = 0; i < nx; i++, k++) {
+      for (let i = 0; i < nxA; i++, k++) {
         if (h[k] < 0) { this.clippedVolume -= h[k] * this.dx * this.dy; h[k] = 0; }
         if (h[k] < hdry) { q[k] = 0; r[k] = 0; }
       }
@@ -257,20 +270,21 @@ export class SWE {
 
   // 前进一个时间步 dt（≤ 稳定步长，由调用者保证）
   stepOnce(dt) {
-    const { nx, ny, h, q, r, h1, q1, r1, dh, dq, dr } = this;
+    this.updateActive();
+    const { ny, nxA, h, q, r, h1, q1, r1, dh, dq, dr } = this;
     const t = this.t;
     this.applyBC(h, q, r, t);
     this.rhs(h, q, r, dh, dq, dr);
     for (let j = 0; j < ny; j++) {
       let k = this.id(0, j);
-      for (let i = 0; i < nx; i++, k++) { h1[k] = h[k] + dt * dh[k]; q1[k] = q[k] + dt * dq[k]; r1[k] = r[k] + dt * dr[k]; }
+      for (let i = 0; i < nxA; i++, k++) { h1[k] = h[k] + dt * dh[k]; q1[k] = q[k] + dt * dq[k]; r1[k] = r[k] + dt * dr[k]; }
     }
     this.fixPositivity(h1, q1, r1);
     this.applyBC(h1, q1, r1, t + dt);
     this.rhs(h1, q1, r1, dh, dq, dr);
     for (let j = 0; j < ny; j++) {
       let k = this.id(0, j);
-      for (let i = 0; i < nx; i++, k++) {
+      for (let i = 0; i < nxA; i++, k++) {
         h[k] = 0.5 * h[k] + 0.5 * (h1[k] + dt * dh[k]);
         q[k] = 0.5 * q[k] + 0.5 * (q1[k] + dt * dq[k]);
         r[k] = 0.5 * r[k] + 0.5 * (r1[k] + dt * dr[k]);
@@ -283,12 +297,12 @@ export class SWE {
 
   // 算子分裂：底摩擦(Manning，隐式)、风应力、海绵层
   postSource(dt) {
-    const { nx, ny, h, q, r, hdry, manning, g, wind, sponge, b } = this;
+    const { ny, nxA, h, q, r, hdry, manning, g, wind, sponge, b } = this;
     const n2g = manning * manning * g;
     const wx = wind.ax * dt, wy = wind.ay * dt;
     for (let j = 0; j < ny; j++) {
       let k = this.id(0, j);
-      for (let i = 0; i < nx; i++, k++) {
+      for (let i = 0; i < nxA; i++, k++) {
         const hh = h[k];
         if (hh <= hdry) continue;
         // 风应力：水很浅（< 2cm）时逐渐不作用
@@ -313,6 +327,7 @@ export class SWE {
     let rem = T, n = 0;
     while (rem > 1e-9 && n < maxSteps) {
       this.applyBC(this.h, this.q, this.r, this.t);
+      this.updateActive();
       let dt = this.stableDt();
       if (dt > rem) dt = rem;
       this.stepOnce(dt);

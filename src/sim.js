@@ -4,7 +4,7 @@ import { DOMAIN, makeBed, bedHeight, rockMask, ROCKS } from './terrain.js';
 import { WaveMaker, swellParams, swellDirFactor, chopSpectrum, windVector } from './waves.js';
 import { Boat, RHO } from './boat.js';
 
-const MAX_SPRAY = 14000;
+const MAX_SPRAY = 24000;
 
 export class Simulation {
   constructor(o = {}) {
@@ -12,7 +12,7 @@ export class Simulation {
     this.nx = Math.round(DOMAIN.nx * scale); this.ny = Math.round(DOMAIN.ny * scale);
     this.dx = DOMAIN.dx / scale;
     const { nx, ny, dx } = this;
-    this.swe = new SWE({ nx, ny, dx, bed: makeBed(nx, ny, dx), cfl: o.cfl ?? 0.4, manning: 0.025 });
+    this.swe = new SWE({ nx, ny, dx, bed: makeBed(nx, ny, dx), cfl: o.cfl ?? 0.5, manning: 0.025 });
     const s = this.swe;
     // 南北海绵层
     const sw = Math.round(8 * scale);
@@ -151,6 +151,7 @@ export class Simulation {
     const smp = this._sampler();
     while (rem > 1e-9) {
       s.applyBC(s.h, s.q, s.r, s.t);
+      s.updateActive();
       let dt = Math.min(s.stableDt(), rem, 0.02);
       this.maker.update(dt);
       this._pressFromBoat(dt);
@@ -184,7 +185,7 @@ export class Simulation {
           if (hh < 0.7 && slope > 0.17) src += (slope - 0.17) * 3.2;
           if (Fr > 0.7 && hh < 0.7) src += (Fr - 0.7) * 3.0;
           // 浪舌与回流边缘（薄水层 + 邻近干点 + 有流速）
-          if (hh < 0.06 && sp > 0.18 && (h[k + 1] < 0.002 || h[k - 1] < 0.002 || h[k + W] < 0.002 || h[k - W] < 0.002)) src += 2.2 * sp;
+          if (hh < 0.06 && sp > 0.18 && (h[k + 1] < 0.002 || h[k - 1] < 0.002 || h[k + W] < 0.002 || h[k - W] < 0.002)) src += 0.9 * sp;
           // 石头周围
           if (sp > 0.35 && (rock[c] > 0.3 || (i > 0 && rock[c - 1] > 0.5) || (i < nx - 1 && rock[c + 1] > 0.5) || (j > 0 && rock[c - nx] > 0.5) || (j < ny - 1 && rock[c + nx] > 0.5))) src += 1.6 * sp;
           // 船体周围
@@ -207,7 +208,7 @@ export class Simulation {
         const sx = Math.max(0, Math.min(nx - 1.001, i - u * dt / dx)), sy = Math.max(0, Math.min(ny - 1.001, j - v * dt / dx));
         const i0 = Math.floor(sx), j0 = Math.floor(sy), tx = sx - i0, ty = sy - j0, c0 = j0 * nx + i0;
         let f = (out[c0] * (1 - tx) + out[c0 + 1] * tx) * (1 - ty) + (out[c0 + nx] * (1 - tx) + out[c0 + nx + 1] * tx) * ty;
-        const tau = hh > 0.2 ? 3.2 : (hh > 0.05 ? 5 : 8);
+        const tau = hh > 0.2 ? 3.2 : (hh > 0.05 ? 4.5 : 5.5);
         f *= Math.exp(-dt / tau);
         foam[c] = Math.min(1.6, f);
       }
@@ -239,20 +240,20 @@ export class Simulation {
         if (nl > 0) { nxo /= nl; nyo /= nl; I = Math.max(0, u * nxo + v * nyo); }
         const x0 = (i + 0.5) * dx, y0 = (j + 0.5) * dx, zs = hh + s.b[k];
         if (I > 0.5) {
-          const rate = Math.min(260, 55 * I * I * (0.5 + Math.min(hh, 0.4)));            // 个/秒
+          const rate = Math.min(1400, 260 * I * I * (0.5 + Math.min(hh, 0.4)));            // 个/秒
           let nEmit = rate * dt; nEmit = Math.floor(nEmit) + (this.rnd() < nEmit % 1 ? 1 : 0);
           for (let m = 0; m < nEmit; m++) {
             const out = 0.15 + 0.5 * this.rnd();
             const vz = (1.1 + 0.9 * this.rnd()) * (0.8 + 0.7 * I) + 0.5;
-            this._emit(x0 - nxo * dx * 0.3 + (this.rnd() - 0.5) * dx, y0 - nyo * dx * 0.3 + (this.rnd() - 0.5) * dx, zs + 0.05, -nxo * out * I + (this.rnd() - 0.5) * 0.8 * I + u * 0.15, -nyo * out * I + (this.rnd() - 0.5) * 0.8 * I + v * 0.15, vz, 0.012 + 0.03 * this.rnd(), 1.5);
+            this._emit(x0 - nxo * dx * 0.3 + (this.rnd() - 0.5) * dx, y0 - nyo * dx * 0.3 + (this.rnd() - 0.5) * dx, zs + 0.05, -nxo * out * I + (this.rnd() - 0.5) * 0.8 * I + u * 0.15, -nyo * out * I + (this.rnd() - 0.5) * 0.8 * I + v * 0.15, vz, 0.008 + 0.022 * this.rnd(), 1.7);
             this.stats.rockSprayEmitted++;
           }
         }
         // 破碎/浪舌高速处的细小飞沫
         const Fr = sp / Math.sqrt(g * hh);
         if (Fr > 0.95 && hh < 0.5 && this.foam[c] > 0.5) {
-          let nEmit = 12 * (Fr - 0.9) * dt; nEmit = Math.floor(nEmit) + (this.rnd() < nEmit % 1 ? 1 : 0);
-          for (let m = 0; m < nEmit; m++) this._emit(x0 + (this.rnd() - 0.5) * dx, y0 + (this.rnd() - 0.5) * dx, zs + 0.03, u * 0.4 + (this.rnd() - 0.5) * 0.6, v * 0.4 + (this.rnd() - 0.5) * 0.6, 0.5 + 0.9 * this.rnd(), 0.008 + 0.014 * this.rnd(), 0.9);
+          let nEmit = 30 * (Fr - 0.9) * dt; nEmit = Math.floor(nEmit) + (this.rnd() < nEmit % 1 ? 1 : 0);
+          for (let m = 0; m < nEmit; m++) this._emit(x0 + (this.rnd() - 0.5) * dx, y0 + (this.rnd() - 0.5) * dx, zs + 0.03, u * 0.4 + (this.rnd() - 0.5) * 0.6, v * 0.4 + (this.rnd() - 0.5) * 0.6, 0.5 + 0.9 * this.rnd(), 0.006 + 0.012 * this.rnd(), 1.0);
         }
       }
     }
@@ -328,6 +329,6 @@ export class Simulation {
       s.h[k] = Math.max(0, s.h[k] + strength * Math.exp(-d2 / r2));
     }
     // 水花
-    for (let m = 0; m < 70; m++) { const a = this.rnd() * Math.PI * 2, sp = 0.4 + this.rnd() * 1.2; this._emit(x + Math.cos(a) * 0.05, y + Math.sin(a) * 0.05, this.etaAt(x, y) + 0.02, Math.cos(a) * sp * 0.5, Math.sin(a) * sp * 0.5, 1.6 + 1.6 * this.rnd(), 0.012 + 0.02 * this.rnd(), 1.2); }
+    for (let m = 0; m < 160; m++) { const a = this.rnd() * Math.PI * 2, sp = 0.4 + this.rnd() * 1.2; this._emit(x + Math.cos(a) * 0.05, y + Math.sin(a) * 0.05, this.etaAt(x, y) + 0.02, Math.cos(a) * sp * 0.5, Math.sin(a) * sp * 0.5, 1.6 + 1.6 * this.rnd(), 0.006 + 0.012 * this.rnd(), 1.2); }
   }
 }

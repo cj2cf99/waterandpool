@@ -13,7 +13,7 @@ export function windSea(U, F) {
 // 入射涌浪（来自开阔大水面的长波，交给浅水方程）：周期取 2.4–3.7 s，保证 kh ≲ 0.7，
 // 浅水方程的无色散假设误差约 6%。波高随风速经验增长，上限取破碎极限（≈0.55 倍水深）。
 export function swellParams(U, depth = 0.9) {
-  const Hs = Math.min(0.0047 * Math.pow(Math.max(U, 0), 1.6) + 0.012, 0.55 * depth);
+  const Hs = Math.min(0.0062 * Math.pow(Math.max(U, 0), 1.6) + 0.012, 0.55 * depth);
   const Tp = 2.3 + 0.07 * U;
   return { Hs, Tp };
 }
