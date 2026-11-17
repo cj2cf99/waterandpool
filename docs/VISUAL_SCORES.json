@@ -1,0 +1,15 @@
+{
+  "说明": "B 项为人工对照 out/*.png 截图的保守自评（每项满分 4），非客观测量。证据文件见 evidence。",
+  "scores": {
+    "B1": {"score": 3.5, "evidence": "view_top.png, wind04_breeze.png", "note": "浅水见底、深处青绿渐变；缺真实水体的悬浮物/细微色散"},
+    "B2": {"score": 3.5, "evidence": "view_boat.png, wind13_strong.png", "note": "沙底、船影、锚绳随波扭曲"},
+    "B3": {"score": 3.5, "evidence": "view_glint.png", "note": "掠射角天空反射+拉长的太阳高光路径"},
+    "B4": {"score": 3.0, "evidence": "view_top.png", "note": "焦散网络可见，但对比偏柔"},
+    "B5": {"score": 3.0, "evidence": "wind00_calm.png … wind19_storm.png", "note": "量级与浪向正确；浅水方程无色散，无卷浪破碎"},
+    "B6": {"score": 3.0, "evidence": "wind13_strong.png, wind19_storm.png", "note": "阵风斑块、白浪有；低风速时涌浪不明显"},
+    "B7": {"score": 3.5, "evidence": "seq_swash.png, view_shore.png", "note": "浪舌上冲、湿沙变暗变干、泡沫花边"},
+    "B8": {"score": 3.0, "evidence": "seq_rocks.png", "note": "泡沫环与粒子水花有；水花偏小、略块状；石头形状偏锥形"},
+    "B9": {"score": 3.0, "evidence": "view_boat.png, seq_boat.png", "note": "木纹、船板、吃水、锚绳；无桨等细节"},
+    "B10": {"score": 3.0, "evidence": "all", "note": "光照/色调映射良好；沙丘偏荒漠、无植被，场景略单调"}
+  }
+}
