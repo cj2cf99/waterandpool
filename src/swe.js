@@ -98,7 +98,7 @@ export class SWE {
     for (let j = 0; j < ny; j++) {
       const k0 = id(0, j);
       if (this.west) {
-        const eta = this.west.eta(t);
+        const eta = this.west.eta(t, (j + 0.5) * this.dy);
         const h0 = Math.max(h[k0], 1e-3);
         const c = Math.sqrt(g / h0);
         const eta0 = h[k0] + b[k0];
