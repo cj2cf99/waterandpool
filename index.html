@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>沙滩小水域 · 实时水面模拟</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b1a22; color: #e8f1f5; font: 13px/1.45 system-ui, "PingFang SC", "Microsoft YaHei", sans-serif; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; touch-action: none; cursor: grab; }
+  canvas.drag { cursor: grabbing; }
+  #panel { position: fixed; left: 12px; top: 12px; width: 268px; padding: 12px 14px; background: rgba(8,22,30,.72); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,.12); border-radius: 10px; user-select: none; }
+  #panel h1 { font-size: 14px; margin: 0 0 8px; font-weight: 600; letter-spacing: .5px; }
+  .row { display: flex; align-items: center; gap: 8px; margin: 7px 0; }
+  .row label { width: 62px; color: #a9c3cf; flex: none; }
+  .row input[type=range] { flex: 1; accent-color: #4fc3d8; }
+  .row .val { width: 54px; text-align: right; font-variant-numeric: tabular-nums; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 4px; }
+  button { background: rgba(79,195,216,.14); color: #dff3f8; border: 1px solid rgba(79,195,216,.45); border-radius: 6px; padding: 4px 9px; cursor: pointer; font: inherit; }
+  button:hover { background: rgba(79,195,216,.3); } button.on { background: rgba(79,195,216,.55); }
+  select { background: #0f2630; color: #dff3f8; border: 1px solid rgba(255,255,255,.2); border-radius: 5px; padding: 2px 4px; font: inherit; }
+  #stats { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.1); color: #9fb8c4; font-variant-numeric: tabular-nums; }
+  #hint { position: fixed; right: 14px; bottom: 12px; color: rgba(255,255,255,.55); text-align: right; font-size: 12px; pointer-events: none; }
+  #err { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: #0b1a22; padding: 30px; white-space: pre-wrap; color: #ffb4a8; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="panel">
+  <h1>沙滩小水域 · 实时水面模拟</h1>
+  <div class="row"><label>风速</label><input id="wind" type="range" min="0" max="20" step="0.1" value="4"><span class="val" id="windv">4.0 m/s</span></div>
+  <div class="row"><label>风向</label><input id="dir" type="range" min="0" max="359" step="1" value="15"><span class="val" id="dirv">15° 朝岸</span></div>
+  <div class="btns" id="presets">
+    <button data-u="0.5">无风</button><button data-u="3">轻风</button><button data-u="6">和风</button><button data-u="10">劲风</button><button data-u="15">强风</button><button data-u="20">风暴</button>
+  </div>
+  <div class="row"><label>阵风</label><button id="gust" class="on">开</button><label style="width:auto;margin-left:6px">锚绳</label><button id="rope" class="on">开</button></div>
+  <div class="row"><label>画质</label><select id="ssaa"><option value="1">标准</option><option value="1.5" selected>高</option><option value="2">极高</option></select>
+    <select id="grid"><option value="0.67">网格 128×86</option><option value="1" selected>网格 192×128</option><option value="1.33">网格 256×171</option></select></div>
+  <div class="row"><label>速度</label><input id="speed" type="range" min="0" max="3" step="0.25" value="1"><span class="val" id="speedv">1.00×</span><button id="pause">暂停</button></div>
+  <div id="stats">—</div>
+</div>
+<div id="hint">左键拖动旋转 · 滚轮缩放 · 右键拖动平移<br>点击水面：投一颗石子</div>
+<div id="err"></div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

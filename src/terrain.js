@@ -25,12 +25,23 @@ function baseBed(x, y) {
   const xs = x - 1.6 * Math.sin(2 * Math.PI * y / Ly * 1.15 + 0.6) - 0.55 * Math.sin(2 * Math.PI * y / Ly * 2.9 + 1.9);
   let b = -0.9 + 0.072 * softplus(xs - 8.8, 0.9);                    // 平底 → 缓坡（约 1:14）
   b += 0.16 * Math.exp(-((xs - 12.3) ** 2) / 1.5);                   // 沙洲
-  b += 0.022 * Math.max(0, xs - 22.2) ** 2;                          // 沙丘
+  b += 2.5 * (1 - Math.exp(-Math.pow(Math.max(0, xs - 21.5) / 8.5, 2)));        // 沙丘缓缓升高到 ~2.5m 后趋平
+  b += 0.45 * Math.sin(x * 0.31 + 1.7) * Math.sin(y * 0.23 + 0.4) * sstep(24, 34, xs);   // 沙丘起伏
+  b += 7 * sstep(48, 120, xs);                                                // 远处丘陵（背景）
   return b;
 }
 
+// 近海加深（x<0，仅渲染用）、南北岬角（把水域围成海湾，隐藏模拟域的侧边界）
+function sideRise(x, y) {
+  const taper = sstep(-60, -20, x);
+  const north = 1.05 * sstep(LENGTH - 2.4, LENGTH - 0.2, y) + 3.8 * sstep(LENGTH, LENGTH + 28, y);
+  const south = 1.05 * sstep(2.4, 0.2, y) + 3.8 * sstep(0, -28, y);
+  return taper * (north + south);
+}
 export function bedHeight(x, y) {
   let b = baseBed(x, y);
+  if (x < 0) b = -0.9 - 2.1 * sstep(0, 25, -x);
+  b += sideRise(x, y);
   for (const r of ROCKS) {
     const d = Math.hypot(x - r.x, y - r.y) / r.R;
     if (d < 1.6) {

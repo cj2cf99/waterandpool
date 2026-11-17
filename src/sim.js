@@ -135,6 +135,12 @@ export class Simulation {
 
   // —— 主步进：dtFrame 秒 ——
   step(dtFrame) {
+    if (dtFrame > 1 / 30 + 1e-9) {          // 大步长拆成 ≤1/30 s 的帧，保证泡沫/水花/阵风按帧更新
+      let r = dtFrame; while (r > 1e-9) { const d = Math.min(r, 1 / 30); this._stepFrame(d); r -= d; } return;
+    }
+    this._stepFrame(dtFrame);
+  }
+  _stepFrame(dtFrame) {
     const s = this.swe; let rem = dtFrame, n = 0;
     // 阵风（OU 过程，时间常数 4 s，幅度 ~22%）
     if (this.windMode === 'gusty') {
@@ -280,9 +286,23 @@ export class Simulation {
     out.vel = out.vel || new Float32Array(N * 2);
     for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
       const k = s.id(i, j), c = j * nx + i, hh = s.h[k];
-      out.depth[c] = hh; out.eta[c] = hh + s.b[k];
+      out.depth[c] = hh;
+      out.eta[c] = hh > s.hdry ? hh + s.b[k] : NaN;                 // 干单元先标 NaN，下面外推水面高度
       const iv = hh > 0.02 ? 1 / hh : 0; out.vel[2 * c] = s.q[k] * iv; out.vel[2 * c + 1] = s.r[k] * iv;
     }
+    // 水面高度外推：把水位向相邻干单元延伸 2 圈，渲染端用精细床面算水深 → 水边落在地形等高线上（亚格点精度）
+    const e = out.eta, tmp = this._etmp || (this._etmp = new Float32Array(N));
+    for (let pass = 0; pass < 2; pass++) {
+      tmp.set(e);
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+        const c = j * nx + i; if (!Number.isNaN(tmp[c])) continue;
+        let sum = 0, n = 0;
+        if (i > 0 && !Number.isNaN(tmp[c - 1])) { sum += tmp[c - 1]; n++; } if (i < nx - 1 && !Number.isNaN(tmp[c + 1])) { sum += tmp[c + 1]; n++; }
+        if (j > 0 && !Number.isNaN(tmp[c - nx])) { sum += tmp[c - nx]; n++; } if (j < ny - 1 && !Number.isNaN(tmp[c + nx])) { sum += tmp[c + nx]; n++; }
+        if (n) e[c] = sum / n;
+      }
+    }
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const c = j * nx + i; if (Number.isNaN(e[c])) e[c] = s.b[s.id(i, j)] - 0.03; }
     out.foam.set(this.foam); out.wet.set(this.wet);
     const b = this.boat;
     out.boat = { pos: [...b.pos], q: [...b.q], rope: b.rope ? { ax: b.rope.ax, ay: b.rope.ay, az: bedHeight(b.rope.ax, b.rope.ay), len: b.rope.len, tension: b.lastRopeTension, on: b.rope.on } : null };
@@ -290,6 +310,9 @@ export class Simulation {
     for (let n = 0; n < p.n; n++) { out.spray[5 * n] = p.x[n]; out.spray[5 * n + 1] = p.y[n]; out.spray[5 * n + 2] = p.z[n]; out.spray[5 * n + 3] = p.size[n]; out.spray[5 * n + 4] = 1 - p.age[n] / p.life[n]; }
     out.wind = { U: this.U, dir: this.dirDeg, vec: windVector(this.U, this.dirDeg) };
     out.chop = this.chop; out.chopPhase = this.chopPhase;
+    const mk = this.maker, NM = mk.N, c = Math.sqrt(G * mk.depth);
+    out.maker = { amp: new Float32Array(NM), phase: new Float32Array(NM), kx: new Float32Array(NM), ky: new Float32Array(NM) };
+    for (let i = 0; i < NM; i++) { out.maker.amp[i] = mk.amp[i]; out.maker.phase[i] = mk.phase[i] % (2 * Math.PI); out.maker.ky[i] = mk.ky[i]; const k = mk.omega[i] / c; out.maker.kx[i] = Math.sqrt(Math.max(0, k * k - mk.ky[i] * mk.ky[i])); }
     out.Hs = this.maker.Hs; out.Tp = this.maker.Tp;
     return out;
   }
