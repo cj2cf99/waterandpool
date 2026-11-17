@@ -1,0 +1,11 @@
+{
+  "name": "water-sim",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "沙滩小水域实时水面模拟（浅水方程 + 风浪 + 小木船 + 岸边/石头浪花）",
+  "scripts": {
+    "dev": "node tools/dev-server.mjs",
+    "test": "node tools/test-all.mjs"
+  }
+}
